@@ -48,6 +48,8 @@ class Simulator:
         self.sun        = None
         self.lpf        = None
         self.bge        = None
+        self.jupiter    = None
+        self.saturn     = None
         
         # Stubs for other stuff
         self.modes      = None
@@ -117,6 +119,11 @@ class Simulator:
         
         self.lpf = Sat(da[:,0], da[:,3] , da[:,4],da[:,5])
         self.bge = Sat(da[:,0], da[:,6] , da[:,7],da[:,8])
+        # optional planet columns: [9,10]=jupiter alt/az, [11,12]=saturn alt/az
+        if da.shape[1] >= 13:
+            # Body is imported via `from nav import *` → nav.coordinates.Body
+            self.jupiter = Body(da[:,0], da[:,9],  da[:,10], name='jupiter')
+            self.saturn  = Body(da[:,0], da[:,11], da[:,12], name='saturn')
 
     # ---
     def read_modes(self):
