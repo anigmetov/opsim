@@ -278,13 +278,11 @@ def track(interval):
     """
 
     o           = O(interval)
-    length      = len(o.times)
     (alt, az)   = o.get_track_solar('sun')
     return (o.times, alt, az)
 
-def track_from_observation(observation):
-    length      = len(observation.times)
-    (alt, az)   = observation.get_track_solar('sun')
+def track_from_observation(observation, objid):
+    (alt, az)   = observation.get_track_solar(objid)
     return (observation.times, alt, az)
 
 ###

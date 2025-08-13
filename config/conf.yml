@@ -10,6 +10,10 @@ location:
     longitude:                    182.258 # degrees
     height:                       0 # meters
 
+bodies:
+  - sun
+#  - mars
+
 satellites:
   lpf:
     semi_major_km:                5738
