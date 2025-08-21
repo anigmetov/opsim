@@ -11,12 +11,9 @@ import sys
 import time
 from sys import exit
 
-import h5py
-import numpy as np
-import yaml
 
-# os.environ['ASTROPY_DOWNLOAD_CACHE_LOCK_ATTEMPTS'] = '1'
-# os.environ['ASTROPY_PARALLEL_DOWNLOAD'] = 'False'
+os.environ['ASTROPY_DOWNLOAD_CACHE_LOCK_ATTEMPTS'] = '1'
+os.environ['ASTROPY_PARALLEL_DOWNLOAD'] = 'False'
 
 
 # --- Environment ------------------------------------------------------------
@@ -48,8 +45,30 @@ def compute_satellite_track(observation, sat_config):
     return lusee.ObservedSatellite(observation, satellite)
 
 
-def inspect_file():
-    pass
+def inspect_file(fname, limit=4):
+    f = h5py.File(fname, "r")
+    ds_meta = f["/meta/configuration"]
+    conf = yaml.safe_load(ds_meta[0,])
+    check = yaml.dump(conf)
+    print(check)
+
+
+    mjd = f["/orbitals/mjd"]
+    mjd = np.array(mjd)
+    print(f"Shape of the data payload: {mjd.shape}, first {limit} mjd: {mjd[:limit]}")
+
+    for objid in f["/orbitals/"]:
+        if objid == "mjd":
+            continue
+        print(f"Object {objid}:")
+        for data_nm in f[f"/orbitals/{objid}"]:
+            data = np.array(f[f"/orbitals/{objid}/{data_nm}"])
+            print(f"\tdata field {data_nm}:\t{data[:limit]}")
+
+
+
+def helper(observation, body):
+    return body, track_from_observation(observation, body)
 
 
 def produce_data(conf, verbose: bool = False):
@@ -71,16 +90,21 @@ def produce_data(conf, verbose: bool = False):
 
     print(f"Latitude: {lat}, longitude: {lon}")
 
-    observation = lusee.Observation((t_start, t_end), lat, lon, hgt, deltaT)
+    obs = lusee.Observation((t_start, t_end), lat, lon, hgt, deltaT)
 
     start = time.time()
 
-    bodies_data = {body: track_from_observation(observation, body) for body in conf['bodies']}
+    bodies_data = {body: track_from_observation(obs, body) for body in conf['bodies']}
+
+    # body_args = [(obs, body) for body in conf['bodies']]
+    # with Pool() as pool:
+    #     bodies_data = pool.map(helper, body_args)
+    # bodies_data = dict(bodies_data)
 
     print(f"ELAPSED time (bodies_data): {time.time() - start} seconds")
     start = time.time()
 
-    sat_data = {sat_name: compute_satellite_track(observation, conf["satellites"][sat_name]) for sat_name in
+    sat_data = {sat_name: compute_satellite_track(obs, conf["satellites"][sat_name]) for sat_name in
                 ["lpf", "bge"]}
 
     print(f"ELAPSED time (sat_data): {time.time() - start} seconds")
@@ -110,8 +134,8 @@ def write_to_file(outputfile: str, conf, bodies_data, sat_data, verbose: bool = 
 
     for body, body_data in bodies_data.items():
         b_group = grp_data.create_group(body)
-        b_group.create_dataset("alt", data=body_data[2])
-        b_group.create_dataset("az", data=body_data[1])
+        b_group.create_dataset("alt", data=body_data[1])
+        b_group.create_dataset("az", data=body_data[2])
 
     for sat_name, obs_satellite in sat_data.items():
         s_group = grp_data.create_group(sat_name)
@@ -148,6 +172,7 @@ def main():
     # NB: import must happen in the function, not on the module level
     # to run on MacOS
 
+
     # ----------------------------------------------------------------------------------
     parser = argparse.ArgumentParser()
 
@@ -155,6 +180,7 @@ def main():
     parser.add_argument("-c", "--conffile", type=str, help="The input - a YAML file containing configuration",
                         default='')
     parser.add_argument("-o", "--outputfile", type=str, help="The output", default='')
+    # h5ls -r does the job
     parser.add_argument("-i", "--inspectfile", type=str, help="File to inspect (overrides other options)", default='')
     # ----------------------------------------------------------------------------------
     args = parser.parse_args()
@@ -162,34 +188,17 @@ def main():
     verbose = args.verbose
     conffile = args.conffile
     outputfile = args.outputfile
-    inspectfile = args.inspectfile
+    inspect_fname = args.inspectfile
 
     # ---
+    if inspect_fname: # inspect and exit
+        inspect_file(inspect_fname)
+        exit(0)
+
     if verbose:
         print("*** Verbose mode ***")
-        if inspectfile == '':
-            print(f'''*** Configuration file (YAML): "{conffile}" ***''')
-            print(f'''*** Output file (HDF5): "{outputfile}" ***''')
-        else:
-            print(f'''*** File to inspect (will exit on completion): "{inspectfile}" ***''')
-
-    # ----------------------------------------------------------------------------------
-    # -- INSPECT EXISTING DATA
-    if inspectfile != '':  # inspect and exit
-        f = h5py.File(inspectfile, "r")
-        ds_meta = f["/meta/configuration"]
-        conf = yaml.safe_load(ds_meta[0,])
-        check = yaml.dump(conf)
-        print(check)
-
-        ds_data = f["/data/orbitals"]
-        data_array = np.array(ds_data[:])
-        print(f'''Shape of the data payload: {data_array.shape}''')
-
-        print('First 10 rows')
-        print(data_array[:10])
-
-        exit(0)
+        print(f'''*** Configuration file (YAML): "{conffile}" ***''')
+        print(f'''*** Output file (HDF5): "{outputfile}" ***''')
 
     conf = read_config(conffile, verbose)
 
@@ -206,6 +215,9 @@ def main():
 
 
 if __name__ == '__main__':
+    import h5py
+    import numpy as np
+    import yaml
     from nav.coordinates import track_from_observation
     import lusee
     from lunarsky.time import Time
